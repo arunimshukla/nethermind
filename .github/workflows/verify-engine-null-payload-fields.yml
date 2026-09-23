@@ -1,0 +1,27 @@
+name: Focused Engine payload validation
+on:
+  push:
+    branches: [test/engine-null-payload-fields-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Move build output to scratch disk
+        run: |
+          sudo mkdir -p /mnt/nm-artifacts
+          sudo chown "$(id -u):$(id -g)" /mnt/nm-artifacts
+          ln -s /mnt/nm-artifacts src/Nethermind/artifacts
+      - name: Run focused regression and existing Engine tests
+        run: dotnet test --project src/Nethermind/Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj -c release -- --filter "FullyQualifiedName~NewPayloadV3_should_reject_null_or_missing_required_fields|FullyQualifiedName~NewPayloadV3_should_decline_empty_fields|FullyQualifiedName~NewPayloadV3_should_decline_incorrect_blobgasused"
