@@ -245,8 +245,8 @@ for dockerfile in "${dockerfiles[@]}"; do
 done
 
 if [[ $failures -gt 0 ]]; then
-  echo "$failures label check(s) failed" >&2
+  echo "$failures image metadata check(s) failed" >&2
   exit 1
 fi
 
-echo "All image labels are correct"
+echo "All image metadata is correct"
