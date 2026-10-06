@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 # Checks that the images we publish carry Nethermind's OCI labels rather than the ones they would
-# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's).
+# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's), and that their
+# exposed-port metadata matches the ports the published image is expected to advertise.
 #
 # The labels fed by a build arg are the fragile ones: an ARG is scoped to the stage that declares
 # it, so a final stage that does not redeclare COMMIT_HASH, VERSION and BUILD_TIMESTAMP still
@@ -179,6 +180,7 @@ for dockerfile in "${dockerfiles[@]}"; do
       documentation='https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md'
       # release-bootnode.yml versions the Bootnode from its own project file, not the client's.
       version_file=tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj
+      expected_ports=(30303/udp 6060/tcp 8546/tcp)
       ;;
     Dockerfile | Dockerfile.chiseled)
       title='Nethermind'
@@ -186,6 +188,7 @@ for dockerfile in "${dockerfiles[@]}"; do
       url='https://nethermind.io/nethermind-client'
       documentation='https://docs.nethermind.io'
       version_file=src/Nethermind/Directory.Build.props
+      expected_ports=(30303/tcp 30303/udp 8545/tcp 8551/tcp)
       ;;
     *)
       echo "error: '$dockerfile' has no expected labels here. Add them, or add it to" >&2
@@ -227,6 +230,18 @@ for dockerfile in "${dockerfiles[@]}"; do
   check_label org.opencontainers.image.revision "$commit_hash"
   # build_timestamp is RFC 3339 by construction, so matching it exactly is also the format check.
   check_label org.opencontainers.image.created "$build_timestamp"
+
+  ports=$(docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag")
+  actual_ports=$(jq -c 'keys | sort' <<< "$ports")
+  expected_ports_json=$(printf '%s\n' "${expected_ports[@]}" | jq -R . | jq -sc 'sort')
+
+  if [[ "$actual_ports" != "$expected_ports_json" ]]; then
+    printf '  FAIL exposed ports\n         expected: %s\n         actual:   %s\n' \
+      "$expected_ports_json" "$actual_ports" >&2
+    failures=$((failures + 1))
+  else
+    printf '  ok   exposed ports = %s\n' "$actual_ports"
+  fi
 done
 
 if [[ $failures -gt 0 ]]; then
