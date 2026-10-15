@@ -102,6 +102,29 @@ public class OptimizedDictionaryZkEvmTests
     }
 
     [Test]
+    public void Enumerator_reaches_each_entry_in_place()
+    {
+        OptimizedDictionary<CollidingKey, int> map = [];
+        for (int i = 0; i < 40; i++) map[new CollidingKey(i)] = i;
+        for (int i = 0; i < 40; i += 3) map.Remove(new CollidingKey(i));
+        List<KeyValuePair<CollidingKey, int>> pairs = [.. map];
+
+        List<KeyValuePair<CollidingKey, int>> visited = [];
+        OptimizedDictionary<CollidingKey, int>.Enumerator entries = map.GetEnumerator();
+        while (entries.MoveNext())
+        {
+            visited.Add(new(entries.CurrentKey, entries.CurrentValue));
+            entries.CurrentValue = -entries.CurrentKey.Value;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(visited, Is.EqualTo(pairs));
+            foreach (KeyValuePair<CollidingKey, int> pair in pairs) Assert.That(map[pair.Key], Is.EqualTo(-pair.Key.Value));
+        }
+    }
+
+    [Test]
     public void Reference_keys_hash_and_compare_by_value()
     {
         OptimizedDictionary<string, int> map = new(EqualityComparer<string>.Default) { ["a"] = 1 };
@@ -126,8 +149,9 @@ public class OptimizedDictionaryZkEvmTests
     }
 
     /// <summary>A key whose hash keeps only a few bits, so chains of several entries share each bucket.</summary>
+    /// <remarks>Half the hashes are negative, which the guest map widens by sign rather than by zeros.</remarks>
     private readonly record struct CollidingKey(int Value)
     {
-        public override int GetHashCode() => Value & 7;
+        public override int GetHashCode() => (Value & 7) | ((Value & 8) << 28);
     }
 }
